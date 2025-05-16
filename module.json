@@ -2,7 +2,7 @@
   "id": "custom-feature-categories",
   "title": "Custom Feature Categories",
   "description": "Group features into custom categories on character sheets",
-  "version": "1.0.3",
+  "version": "1.0.0",
   "compatibility": {
     "minimum": "10",
     "verified": "13"
@@ -14,23 +14,17 @@
     }
   ],
   "relationships": {
-  "systems": [
-    {
-      "id": "dnd5e",
-      "type": "system",
-      "compatibility": {
-        "minimum": "2.0.0",
-        "verified": "3.0.0"
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "2.0.0",
+          "verified": "3.0.0"
+        }
       }
-    }
-  ],
-  "requires": [
-    {
-      "id": "lib-wrapper",
-      "type": "module"
-    }
-  ]
-},
+    ]
+  },
   "esmodules": [
     "./scripts/custom-feature-categories.js"
   ],
