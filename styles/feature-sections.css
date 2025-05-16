@@ -1,0 +1,66 @@
+/* Custom category styling */
+section.custom-category {
+  margin-bottom: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+section.custom-category header {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 3px 0;
+  font-weight: bold;
+}
+
+section.custom-category .item-name {
+  flex: 2;
+  margin: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-align: left;
+  align-items: center;
+}
+
+section.custom-category .items-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+section.custom-category .item {
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+}
+
+section.custom-category .item:last-child {
+  border-bottom: none;
+}
+
+section.custom-category .item-image {
+  flex: 0 0 30px;
+  height: 30px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  margin-right: 5px;
+}
+
+section.custom-category .item-controls {
+  flex: 0 0 60px;
+  text-align: right;
+}
+
+/* Dark Mode Compatibility */
+.dark-mode section.custom-category {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark-mode section.custom-category header {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.dark-mode section.custom-category .item {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}

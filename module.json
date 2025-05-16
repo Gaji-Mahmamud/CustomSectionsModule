@@ -1,0 +1,37 @@
+{
+  "id": "custom-feature-categories",
+  "title": "Custom Feature Categories",
+  "description": "Group features into custom categories on character sheets",
+  "version": "1.0.0",
+  "compatibility": {
+    "minimum": "10",
+    "verified": "13"
+  },
+  "authors": [
+    {
+      "name": "Zyriel",
+      "discord": "ZyrielZero"
+    }
+  ],
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "2.0.0",
+          "verified": "3.0.0"
+        }
+      }
+    ]
+  },
+  "esmodules": [
+    "./scripts/custom-feature-categories.js"
+  ],
+  "styles": [
+    "./styles/custom-feature-categories.css"
+  ],
+  "url": "https://github.com/Gaji-Mahmamud/CustomSectionsModule",
+  "manifest": "https://github.com/Gaji-Mahmamud/CustomSectionsModule/releases/latest/download/module.json",
+  "download": "https://github.com/Gaji-Mahmamud/CustomSectionsModule/releases/download/1.0.0/module.zip"
+}
