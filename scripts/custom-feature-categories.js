@@ -10,6 +10,9 @@ const COMMON_CATEGORIES = [
   "Axiom"
 ];
 
+// Immediate logging to verify script loading
+console.log("==== CUSTOM FEATURE CATEGORIES MODULE FILE LOADED ====");
+
 /**
  * Initialize the module
  */
@@ -36,13 +39,45 @@ Hooks.once('init', function() {
   });
 });
 
+// Global hook monitor to identify available sheet hooks
+Hooks.on('ready', () => {
+  console.log("==== CUSTOM FEATURE CATEGORIES READY ====");
+  
+  // Debug helper to log all sheet rendering
+  Hooks.on('render', (app, html, data) => {
+    if (app.constructor.name.includes('Sheet')) {
+      console.log(`Sheet rendered: ${app.constructor.name}`, app);
+    }
+  });
+  
+  // Monitor all hooks that might be related to sheets
+  const originalHooksCall = Hooks.call;
+  Hooks.call = function(hook, ...args) {
+    if (hook.includes('render') && hook.includes('Sheet')) {
+      console.log(`Hook fired: ${hook}`, args[0]?.constructor?.name);
+    }
+    return originalHooksCall.call(this, hook, ...args);
+  };
+});
+
 /**
- * Add category field to item sheets
+ * Add category field to item sheets - Simplified test version
  */
 Hooks.on("renderItemSheet", (app, html, data) => {
-  if (app.item?.type !== 'feat') return;
+  console.log(`${MODULE_ID} | renderItemSheet fired for:`, app.item?.name, app);
   
-  console.log(`${MODULE_ID} | Adding category field to feat sheet`);
+  // Only process feat items
+  if (app.item?.type !== 'feat') {
+    console.log(`${MODULE_ID} | Not a feat item, skipping`);
+    return;
+  }
+  
+  // Very basic test injection to confirm hook is working
+  html.find('form').append(`
+    <div style="background:red;color:white;padding:10px;margin-top:10px;border:2px solid black;">
+      TEST INJECTION - Item: ${app.item.name} - Type: ${app.item.type}
+    </div>
+  `);
   
   // Get current category value
   const currentCategory = app.item.getFlag(MODULE_ID, 'category') || '';
@@ -60,6 +95,14 @@ Hooks.on("renderItemSheet", (app, html, data) => {
       </div>
     </div>
   `;
+  
+  // Log sheet structure for debugging
+  console.log(`${MODULE_ID} | Sheet structure:`, {
+    formGroups: html.find('.form-group').length,
+    headings: html.find('h2').map((i, el) => $(el).text()).get(),
+    sections: html.find('section').map((i, el) => $(el).attr('class')).get(),
+    tabs: html.find('.tab').map((i, el) => $(el).data('tab')).get()
+  });
   
   // For Foundry v13 with DnD5e v5.0+, locate the "FEATURE DETAILS" heading
   const featureDetailsHeading = html.find('h2:contains("FEATURE DETAILS")');
@@ -116,19 +159,58 @@ Hooks.on("renderItemSheet", (app, html, data) => {
 });
 
 /**
- * Inject categories after character sheet render
+ * Try multiple actor sheet hooks to find the one that works
  */
-Hooks.on("renderActorSheet5eCharacter", (app, html, data) => {
-  console.log(`${MODULE_ID} | Character sheet rendered, injecting categories`);
+// Generic actor sheet hook
+Hooks.on("renderActorSheet", (app, html, data) => {
+  console.log(`${MODULE_ID} | renderActorSheet fired for:`, app.actor?.name, app);
   
-  // Our actor
+  // Basic test injection visible on all actor sheets
+  html.find('header').after(`
+    <div style="background:blue;color:white;padding:10px;margin:10px;border:2px solid black;">
+      TEST - Actor: ${app.actor?.name} - Type: ${app.actor?.type} - Sheet: ${app.constructor.name}
+    </div>
+  `);
+  
+  // Only continue for character type actors
+  if (app.actor?.type !== 'character') return;
+  
+  processCategoriesForActor(app, html, data);
+});
+
+// Specific DnD5e character sheet hook
+Hooks.on("renderActorSheet5eCharacter", (app, html, data) => {
+  console.log(`${MODULE_ID} | renderActorSheet5eCharacter fired for:`, app.actor?.name, app);
+  
+  // Only continue for character type actors
+  if (app.actor?.type !== 'character') return;
+  
+  processCategoriesForActor(app, html, data);
+});
+
+// Try with Application v2 sheet hooks
+Hooks.on("renderDND5E.applications.actor.ActorSheet5eCharacter", (app, html, data) => {
+  console.log(`${MODULE_ID} | renderDND5E.applications.actor.ActorSheet5eCharacter fired for:`, app.actor?.name, app);
+  
+  // Only continue for character type actors
+  if (app.actor?.type !== 'character') return;
+  
+  processCategoriesForActor(app, html, data);
+});
+
+/**
+ * Process categories for an actor
+ */
+function processCategoriesForActor(app, html, data) {
   const actor = app.actor;
-  if (!actor || actor.type !== 'character') {
-    console.log(`${MODULE_ID} | Not a character actor`);
+  if (!actor) {
+    console.log(`${MODULE_ID} | No actor found`);
     return;
   }
   
-  // Find the features tab
+  // Find the features tab - log all tabs for debugging
+  console.log(`${MODULE_ID} | All tabs:`, html.find('[data-tab]').map((i, el) => $(el).data('tab')).get());
+  
   const featuresTab = html.find('.tab.features, [data-tab="features"]');
   if (!featuresTab.length) {
     console.log(`${MODULE_ID} | Features tab not found`);
@@ -147,6 +229,8 @@ Hooks.on("renderActorSheet5eCharacter", (app, html, data) => {
   
   for (const feature of features) {
     const category = feature.getFlag(MODULE_ID, 'category');
+    console.log(`${MODULE_ID} | Feature ${feature.name} has category:`, category);
+    
     if (category) {
       if (!categories[category]) categories[category] = [];
       categories[category].push(feature);
@@ -231,6 +315,15 @@ Hooks.on("renderActorSheet5eCharacter", (app, html, data) => {
   categoryHTML += '</div>';
   
   console.log(`${MODULE_ID} | Category HTML created, looking for insertion point`);
+  
+  // Log what sections are available for debugging
+  console.log(`${MODULE_ID} | Available sections:`, 
+    html.find('section').map((i, el) => ({
+      className: $(el).attr('class'),
+      id: $(el).attr('id'),
+      children: $(el).children().length
+    })).get()
+  );
   
   // Insert before first feature section
   const firstFeatureSection = featuresTab.find('section.active-effects, .inventory-list, .features-list').first();
@@ -335,7 +428,7 @@ Hooks.on("renderActorSheet5eCharacter", (app, html, data) => {
   });
   
   console.log(`${MODULE_ID} | Custom categories injection complete`);
-});
+}
 
 /**
  * Helper function to render confirmation dialogs
