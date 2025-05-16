@@ -10,17 +10,11 @@ const COMMON_CATEGORIES = [
   "Axiom"
 ];
 
-// Store the libWrapper reference
-let libWrapper;
-
 /**
  * Initialize the module
  */
 Hooks.once('init', function() {
   console.log(`${MODULE_ID} | Initializing Custom Feature Categories Module`);
-  
-  // Get libWrapper reference (either from the module if active, or the shim)
-  libWrapper = game.modules.get('lib-wrapper')?.active ? window.libWrapper : window.libWrapper;
   
   // Register settings
   game.settings.register(MODULE_ID, "categoryOrder", {
@@ -40,37 +34,6 @@ Hooks.once('init', function() {
     type: Boolean,
     default: true
   });
-  
-  // Register the wrapper for character sheet rendering
-  // Try to find the appropriate class based on the loaded system version
-  if (libWrapper) {
-    try {
-      libWrapper.register(
-        MODULE_ID,
-        'dnd5e.applications.actor.ActorSheet5eCharacter.prototype._renderInner',
-        injectCustomCategories,
-        'WRAPPER'
-      );
-      console.log(`${MODULE_ID} | Successfully registered wrapper`);
-    } catch (e) {
-      console.error(`${MODULE_ID} | Failed to register wrapper:`, e);
-      // Try alternative method
-      try {
-        const ActorSheet5eCharacter = CONFIG.Actor.sheetClasses.character["dnd5e.ActorSheet5eCharacter"].cls;
-        libWrapper.register(
-          MODULE_ID,
-          'ActorSheet5eCharacter.prototype._renderInner',
-          injectCustomCategories,
-          'WRAPPER'
-        );
-        console.log(`${MODULE_ID} | Successfully registered wrapper (alternative method)`);
-      } catch (e2) {
-        console.error(`${MODULE_ID} | Could not find or wrap character sheet class:`, e2);
-      }
-    }
-  } else {
-    console.error(`${MODULE_ID} | libWrapper not found, module will not function correctly`);
-  }
 });
 
 /**
@@ -106,31 +69,23 @@ Hooks.on("renderItemSheet", (app, html, data) => {
 });
 
 /**
- * Primary function to inject custom categories into the character sheet
+ * Inject categories after character sheet render
  */
-async function injectCustomCategories(wrapped, ...args) {
-  console.log(`${MODULE_ID} | Injecting categories function called`);
-  
-  // Call the original _renderInner method to get the HTML
-  const html = await wrapped(...args);
+Hooks.on("renderActorSheet5eCharacter", (app, html, data) => {
+  console.log(`${MODULE_ID} | Character sheet rendered, injecting categories`);
   
   // Our actor
-  const actor = this.actor;
-  if (!actor) {
-    console.log(`${MODULE_ID} | No actor found`);
-    return html;
-  }
-  
-  if (actor.type !== 'character') {
-    console.log(`${MODULE_ID} | Not a character actor: ${actor.type}`);
-    return html;
+  const actor = app.actor;
+  if (!actor || actor.type !== 'character') {
+    console.log(`${MODULE_ID} | Not a character actor`);
+    return;
   }
   
   // Find the features tab
   const featuresTab = html.find('.tab.features, [data-tab="features"]');
   if (!featuresTab.length) {
     console.log(`${MODULE_ID} | Features tab not found`);
-    return html;
+    return;
   }
   
   console.log(`${MODULE_ID} | Found features tab, processing features`);
@@ -158,7 +113,7 @@ async function injectCustomCategories(wrapped, ...args) {
   // If no categorized features, nothing to do
   if (Object.keys(categories).length === 0) {
     console.log(`${MODULE_ID} | No categorized features found`);
-    return html;
+    return;
   }
   
   // Get the display order from settings
@@ -333,8 +288,7 @@ async function injectCustomCategories(wrapped, ...args) {
   });
   
   console.log(`${MODULE_ID} | Custom categories injection complete`);
-  return html;
-}
+});
 
 /**
  * Helper function to render confirmation dialogs
