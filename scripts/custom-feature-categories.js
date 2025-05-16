@@ -1,6 +1,3 @@
-// Import libWrapper from the included shim
-import { libWrapper } from '../lib/libWrapper/shim.js';
-
 // Module constants
 const MODULE_ID = "custom-feature-categories";
 const COMMON_CATEGORIES = [
@@ -13,19 +10,17 @@ const COMMON_CATEGORIES = [
   "Axiom"
 ];
 
+// Store the libWrapper reference
+let libWrapper;
+
 /**
  * Initialize the module
  */
-Hooks.once('init', () => {
+Hooks.once('init', function() {
   console.log(`${MODULE_ID} | Initializing Custom Feature Categories Module`);
   
-  // Register the wrapper for the character sheet rendering
-  libWrapper.register(
-    MODULE_ID,
-    'dnd5e.applications.actor.ActorSheet5eCharacter.prototype._renderInner',
-    injectCustomCategories,
-    'WRAPPER'
-  );
+  // Get libWrapper reference (either from the module if active, or the shim)
+  libWrapper = game.modules.get('lib-wrapper')?.active ? window.libWrapper : window.libWrapper;
   
   // Register settings
   game.settings.register(MODULE_ID, "categoryOrder", {
@@ -45,6 +40,37 @@ Hooks.once('init', () => {
     type: Boolean,
     default: true
   });
+  
+  // Register the wrapper for character sheet rendering
+  // Try to find the appropriate class based on the loaded system version
+  if (libWrapper) {
+    try {
+      libWrapper.register(
+        MODULE_ID,
+        'dnd5e.applications.actor.ActorSheet5eCharacter.prototype._renderInner',
+        injectCustomCategories,
+        'WRAPPER'
+      );
+      console.log(`${MODULE_ID} | Successfully registered wrapper`);
+    } catch (e) {
+      console.error(`${MODULE_ID} | Failed to register wrapper:`, e);
+      // Try alternative method
+      try {
+        const ActorSheet5eCharacter = CONFIG.Actor.sheetClasses.character["dnd5e.ActorSheet5eCharacter"].cls;
+        libWrapper.register(
+          MODULE_ID,
+          'ActorSheet5eCharacter.prototype._renderInner',
+          injectCustomCategories,
+          'WRAPPER'
+        );
+        console.log(`${MODULE_ID} | Successfully registered wrapper (alternative method)`);
+      } catch (e2) {
+        console.error(`${MODULE_ID} | Could not find or wrap character sheet class:`, e2);
+      }
+    }
+  } else {
+    console.error(`${MODULE_ID} | libWrapper not found, module will not function correctly`);
+  }
 });
 
 /**
@@ -83,19 +109,35 @@ Hooks.on("renderItemSheet", (app, html, data) => {
  * Primary function to inject custom categories into the character sheet
  */
 async function injectCustomCategories(wrapped, ...args) {
+  console.log(`${MODULE_ID} | Injecting categories function called`);
+  
   // Call the original _renderInner method to get the HTML
   const html = await wrapped(...args);
   
   // Our actor
   const actor = this.actor;
-  if (actor?.type !== 'character') return html;
+  if (!actor) {
+    console.log(`${MODULE_ID} | No actor found`);
+    return html;
+  }
+  
+  if (actor.type !== 'character') {
+    console.log(`${MODULE_ID} | Not a character actor: ${actor.type}`);
+    return html;
+  }
   
   // Find the features tab
   const featuresTab = html.find('.tab.features, [data-tab="features"]');
-  if (!featuresTab.length) return html;
+  if (!featuresTab.length) {
+    console.log(`${MODULE_ID} | Features tab not found`);
+    return html;
+  }
+  
+  console.log(`${MODULE_ID} | Found features tab, processing features`);
   
   // Get all features
   const features = actor.items.filter(i => i.type === 'feat');
+  console.log(`${MODULE_ID} | Features found:`, features.length);
   
   // Group by category
   const categories = {};
@@ -111,8 +153,13 @@ async function injectCustomCategories(wrapped, ...args) {
     }
   }
   
+  console.log(`${MODULE_ID} | Categories grouped:`, Object.keys(categories));
+  
   // If no categorized features, nothing to do
-  if (Object.keys(categories).length === 0) return html;
+  if (Object.keys(categories).length === 0) {
+    console.log(`${MODULE_ID} | No categorized features found`);
+    return html;
+  }
   
   // Get the display order from settings
   const orderSetting = game.settings.get(MODULE_ID, "categoryOrder") || "";
@@ -123,6 +170,8 @@ async function injectCustomCategories(wrapped, ...args) {
     ...orderList,
     ...Object.keys(categories)
   ])).filter(name => categories[name]);
+  
+  console.log(`${MODULE_ID} | Sorted category names:`, sortedCategoryNames);
   
   // Default expanded state
   const defaultExpanded = game.settings.get(MODULE_ID, "defaultExpanded");
@@ -179,13 +228,19 @@ async function injectCustomCategories(wrapped, ...args) {
   
   categoryHTML += '</div>';
   
+  console.log(`${MODULE_ID} | Category HTML created, looking for insertion point`);
+  
   // Insert before first feature section
   const firstFeatureSection = featuresTab.find('section.active-effects, .inventory-list, .features-list').first();
   if (firstFeatureSection.length) {
+    console.log(`${MODULE_ID} | Inserting before first feature section`);
     firstFeatureSection.before(categoryHTML);
   } else {
+    console.log(`${MODULE_ID} | Appending to features tab`);
     featuresTab.append(categoryHTML);
   }
+  
+  console.log(`${MODULE_ID} | Removing duplicated features from other sections`);
   
   // Remove categorized features from the "Other Features" section to avoid duplication
   for (const category in categories) {
@@ -208,6 +263,8 @@ async function injectCustomCategories(wrapped, ...args) {
       }
     }
   }
+  
+  console.log(`${MODULE_ID} | Adding event listeners`);
   
   // Add event listeners to the new elements
   // Toggle category visibility
@@ -275,6 +332,7 @@ async function injectCustomCategories(wrapped, ...args) {
     item.update({"system.uses.value": value});
   });
   
+  console.log(`${MODULE_ID} | Custom categories injection complete`);
   return html;
 }
 
