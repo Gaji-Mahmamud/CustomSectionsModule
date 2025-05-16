@@ -1,87 +1,168 @@
-// custom-feature-categories.js
-const MODULE_ID = "custom-feature-categories";
+// Import libWrapper from the included shim
+import { libWrapper } from '../lib/libWrapper/shim.js';
 
-// Initialize
+// Module constants
+const MODULE_ID = "custom-feature-categories";
+const COMMON_CATEGORIES = [
+  "Racial Features",
+  "Class Features",
+  "Background Features",
+  "Feats",
+  "Magecraft",
+  "Pathway",
+  "Axiom"
+];
+
+/**
+ * Initialize the module
+ */
 Hooks.once('init', () => {
-  console.log(`${MODULE_ID} | Initializing`);
+  console.log(`${MODULE_ID} | Initializing Custom Feature Categories Module`);
+  
+  // Register the wrapper for the character sheet rendering
+  libWrapper.register(
+    MODULE_ID,
+    'dnd5e.applications.actor.ActorSheet5eCharacter.prototype._renderInner',
+    injectCustomCategories,
+    'WRAPPER'
+  );
+  
+  // Register settings
+  game.settings.register(MODULE_ID, "categoryOrder", {
+    name: "Category Display Order",
+    hint: "Comma-separated list of categories in the order they should appear",
+    scope: "world",
+    config: true,
+    type: String,
+    default: COMMON_CATEGORIES.join(",")
+  });
+  
+  game.settings.register(MODULE_ID, "defaultExpanded", {
+    name: "Default Expanded State",
+    hint: "Whether categories should be expanded or collapsed by default",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true
+  });
 });
 
-// Add category field to item sheets
+/**
+ * Add category field to item sheets
+ */
 Hooks.on("renderItemSheet", (app, html, data) => {
   if (app.item?.type !== 'feat') return;
   
   // Get current category value
   const currentCategory = app.item.getFlag(MODULE_ID, 'category') || '';
   
-  // Create the category input field
+  // Create the category input with datalist for common categories
   const categoryField = `
     <div class="form-group">
-      <label>Category</label>
+      <label>Feature Category</label>
       <div class="form-fields">
-        <input type="text" name="flags.${MODULE_ID}.category" value="${currentCategory}">
+        <input type="text" name="flags.${MODULE_ID}.category" value="${currentCategory}" 
+               list="custom-category-list" placeholder="e.g., Racial Features, Class Features">
+        <datalist id="custom-category-list">
+          ${COMMON_CATEGORIES.map(cat => `<option value="${cat}">`).join('')}
+        </datalist>
       </div>
     </div>
   `;
   
   // Try to find the right place to insert
-  const typeLabel = html.find('label:contains("Type")').first();
-  if (typeLabel.length) {
-    typeLabel.closest('.form-group').before(categoryField);
+  const targetElement = html.find('.tab[data-tab="details"] .form-group').first();
+  if (targetElement.length) {
+    targetElement.before(categoryField);
   } else {
-    html.find('form').prepend(categoryField);
+    html.find('.tab[data-tab="details"]').prepend(categoryField);
   }
 });
 
-// Create custom feature groups on character sheet
-Hooks.on("renderActorSheet", (app, html, data) => {
-  if (app.actor?.type !== 'character') return;
+/**
+ * Primary function to inject custom categories into the character sheet
+ */
+async function injectCustomCategories(wrapped, ...args) {
+  // Call the original _renderInner method to get the HTML
+  const html = await wrapped(...args);
+  
+  // Our actor
+  const actor = this.actor;
+  if (actor?.type !== 'character') return html;
   
   // Find the features tab
-  const featuresTab = html.find('.tab.features, [data-tab="features"]').first();
-  if (!featuresTab.length) return;
+  const featuresTab = html.find('.tab.features, [data-tab="features"]');
+  if (!featuresTab.length) return html;
   
   // Get all features
-  const features = app.actor.items.filter(i => i.type === 'feat');
+  const features = actor.items.filter(i => i.type === 'feat');
   
   // Group by category
   const categories = {};
+  const uncategorized = [];
+  
   for (const feature of features) {
     const category = feature.getFlag(MODULE_ID, 'category');
     if (category) {
       if (!categories[category]) categories[category] = [];
       categories[category].push(feature);
+    } else {
+      uncategorized.push(feature);
     }
   }
   
   // If no categorized features, nothing to do
-  if (Object.keys(categories).length === 0) return;
+  if (Object.keys(categories).length === 0) return html;
+  
+  // Get the display order from settings
+  const orderSetting = game.settings.get(MODULE_ID, "categoryOrder") || "";
+  const orderList = orderSetting.split(",").map(c => c.trim());
+  
+  // Sort the categories
+  const sortedCategoryNames = Array.from(new Set([
+    ...orderList,
+    ...Object.keys(categories)
+  ])).filter(name => categories[name]);
+  
+  // Default expanded state
+  const defaultExpanded = game.settings.get(MODULE_ID, "defaultExpanded");
   
   // Create HTML for custom categories
   let categoryHTML = '<div class="custom-categories">';
   
-  for (const [category, feats] of Object.entries(categories)) {
+  for (const categoryName of sortedCategoryNames) {
+    const feats = categories[categoryName];
+    if (!feats || feats.length === 0) continue;
+    
+    // Generate unique ID for this category
+    const categoryId = categoryName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    
     categoryHTML += `
-      <div class="custom-category">
-        <h3>${category}</h3>
-        <ol class="items-list">
+      <div class="custom-category" data-category="${categoryName}">
+        <div class="custom-category-header">
+          <h3 class="custom-category-title">
+            ${categoryName}
+            <a class="custom-category-toggle" data-category="${categoryId}">
+              <i class="fas ${defaultExpanded ? 'fa-angle-down' : 'fa-angle-right'}"></i>
+            </a>
+          </h3>
+        </div>
+        <div class="custom-category-content" data-category="${categoryId}" ${defaultExpanded ? '' : 'style="display: none;"'}>
+          <ol class="items-list">
     `;
     
     for (const feat of feats) {
       const itemId = feat.id;
-      const uses = feat.system.uses || {};
-      const useValue = uses.value ?? "";
-      const useMax = uses.max ?? "";
-      const useRecovery = uses.per ? CONFIG.DND5E.limitedUsePeriods[uses.per] : "";
+      const useData = getFeatureUseData(feat);
       
       categoryHTML += `
         <li class="item" data-item-id="${itemId}">
-          <div class="item-name rollable">
-            <div class="item-image"><img src="${feat.img}" alt="${feat.name}"></div>
+          <div class="item-name flexrow rollable">
+            <div class="item-image" style="background-image: url('${feat.img}')"></div>
             <h4>${feat.name}</h4>
           </div>
-          <div class="item-uses">${useValue} ${useMax ? `/ ${useMax}` : ""}</div>
-          <div class="item-recovery">${useRecovery}</div>
-          <div class="item-controls">
+          ${useData.usesHTML}
+          <div class="item-controls flexrow">
             <a class="item-control item-edit" title="Edit Item"><i class="fas fa-edit"></i></a>
             <a class="item-control item-delete" title="Delete Item"><i class="fas fa-trash"></i></a>
           </div>
@@ -90,44 +171,149 @@ Hooks.on("renderActorSheet", (app, html, data) => {
     }
     
     categoryHTML += `
-        </ol>
+          </ol>
+        </div>
       </div>
     `;
   }
   
   categoryHTML += '</div>';
   
-  // Insert before first section or at top of features tab
-  const firstSection = featuresTab.find('section, .item-list, .features-list').first();
-  if (firstSection.length) {
-    firstSection.before(categoryHTML);
+  // Insert before first feature section
+  const firstFeatureSection = featuresTab.find('section.active-effects, .inventory-list, .features-list').first();
+  if (firstFeatureSection.length) {
+    firstFeatureSection.before(categoryHTML);
   } else {
     featuresTab.append(categoryHTML);
   }
   
-  // Remove categorized features from default lists to avoid duplication
+  // Remove categorized features from the "Other Features" section to avoid duplication
   for (const category in categories) {
     for (const feat of categories[category]) {
-      html.find(`.item[data-item-id="${feat.id}"]`).not('.custom-category .item').remove();
+      const featureItem = html.find(`.features-list .item[data-item-id="${feat.id}"]`);
+      if (featureItem.length) {
+        // Find the parent section
+        const parentSection = featureItem.closest('section');
+        featureItem.remove();
+        
+        // If the section is now empty, hide or update it
+        if (parentSection.find('.item').length === 0) {
+          const sectionHeader = parentSection.find('.items-header');
+          if (sectionHeader.text().includes('Other')) {
+            if (uncategorized.length === 0) {
+              parentSection.hide();
+            }
+          }
+        }
+      }
     }
   }
   
   // Add event listeners to the new elements
+  // Toggle category visibility
+  html.find('.custom-category-toggle').click(ev => {
+    ev.preventDefault();
+    const categoryId = ev.currentTarget.dataset.category;
+    const content = html.find(`.custom-category-content[data-category="${categoryId}"]`);
+    const icon = ev.currentTarget.querySelector('i');
+    
+    if (content.is(':visible')) {
+      content.slideUp(200);
+      icon.classList.replace('fa-angle-down', 'fa-angle-right');
+    } else {
+      content.slideDown(200);
+      icon.classList.replace('fa-angle-right', 'fa-angle-down');
+    }
+  });
+  
+  // Feature item interactions
   html.find('.custom-category .item-name.rollable').click(ev => {
-    const itemId = $(ev.currentTarget).closest('.item').data('item-id');
-    const item = app.actor.items.get(itemId);
+    ev.preventDefault();
+    const itemId = ev.currentTarget.closest('.item').dataset.itemId;
+    const item = actor.items.get(itemId);
     if (item) item.roll();
   });
   
   html.find('.custom-category .item-edit').click(ev => {
-    const itemId = $(ev.currentTarget).closest('.item').data('item-id');
-    const item = app.actor.items.get(itemId);
+    ev.preventDefault();
+    const itemId = ev.currentTarget.closest('.item').dataset.itemId;
+    const item = actor.items.get(itemId);
     if (item) item.sheet.render(true);
   });
   
   html.find('.custom-category .item-delete').click(ev => {
-    const itemId = $(ev.currentTarget).closest('.item').data('item-id');
-    const item = app.actor.items.get(itemId);
-    if (item) item.delete();
+    ev.preventDefault();
+    const li = ev.currentTarget.closest('.item');
+    const itemId = li.dataset.itemId;
+    
+    renderDialog({
+      title: `Delete Feature`,
+      content: `<p>Are you sure you want to delete <strong>${actor.items.get(itemId).name}</strong>?</p>`,
+      buttons: {
+        yes: {
+          icon: '<i class="fas fa-trash"></i>',
+          label: "Delete",
+          callback: () => actor.items.get(itemId).delete()
+        },
+        no: {
+          icon: '<i class="fas fa-times"></i>',
+          label: "Cancel"
+        }
+      },
+      default: "no"
+    });
   });
-});
+  
+  // Uses counter interactions - increase/decrease
+  html.find('.custom-category .item-uses input').change(ev => {
+    ev.preventDefault();
+    const itemId = ev.currentTarget.closest('.item').dataset.itemId;
+    const item = actor.items.get(itemId);
+    if (!item) return;
+    
+    const value = Number(ev.currentTarget.value);
+    item.update({"system.uses.value": value});
+  });
+  
+  return html;
+}
+
+/**
+ * Helper function to render confirmation dialogs
+ */
+function renderDialog({title, content, buttons, default: defaultButton}) {
+  return new Dialog({
+    title,
+    content,
+    buttons,
+    default: defaultButton
+  }).render(true);
+}
+
+/**
+ * Helper function to get feature uses data
+ */
+function getFeatureUseData(feature) {
+  const uses = feature.system.uses || {};
+  const usesValue = uses.value ?? "";
+  const usesMax = uses.max ?? "";
+  const usesPer = uses.per ? CONFIG.DND5E.limitedUsePeriods[uses.per] : "";
+  
+  let usesHTML = '';
+  if (usesMax) {
+    usesHTML = `
+      <div class="item-uses flexrow">
+        <div class="item-usage">
+          <input class="uses-value" type="text" value="${usesValue}" placeholder="0">
+          <span class="sep"> / </span>
+          <span class="uses-max">${usesMax}</span>
+          <span class="recovery">${usesPer}</span>
+        </div>
+      </div>
+    `;
+  } else {
+    usesHTML = `<div class="item-uses flexrow"></div>`;
+  }
+  
+  return { usesHTML };
+}
