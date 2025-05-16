@@ -1,13 +1,80 @@
-/* Custom category field styling */
-input[name^="flags.custom-feature-categories"] {
-  background: rgba(0, 0, 0, 0.05);
-  border: 1px solid #7a7971;
-  border-radius: 3px;
+/* custom-feature-categories.css */
+.custom-categories {
+  margin-bottom: 10px;
+}
+
+.custom-category {
+  margin-bottom: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.custom-category h3 {
+  background: rgba(80, 0, 0, 0.8);
+  color: white;
+  margin: 0;
+  padding: 5px 10px;
+  font-size: 1.2em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.custom-category .items-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.custom-category .item {
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  background: rgba(30, 30, 30, 0.1);
+}
+
+.custom-category .item:last-child {
+  border-bottom: none;
+}
+
+.custom-category .item-name {
+  flex: 2;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.custom-category .item-image {
+  flex: 0 0 30px;
+  height: 30px;
+  margin-right: 5px;
+}
+
+.custom-category .item-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: none;
+}
+
+.custom-category .item-uses,
+.custom-category .item-recovery {
+  flex: 1;
+  text-align: center;
+}
+
+.custom-category .item-controls {
+  flex: 0 0 60px;
+  text-align: right;
+  padding-right: 5px;
 }
 
 /* Dark mode compatibility */
-.dark-mode input[name^="flags.custom-feature-categories"] {
-  background: rgba(0, 0, 0, 0.3);
-  color: #f0f0f0;
-  border-color: #666;
+.dark-mode .custom-category {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark-mode .custom-category .item {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
 }
