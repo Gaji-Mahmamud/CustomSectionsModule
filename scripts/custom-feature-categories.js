@@ -1,3 +1,4 @@
+// custom-feature-categories.js
 const MODULE_ID = "custom-feature-categories";
 
 // Initialize
@@ -7,91 +8,126 @@ Hooks.once('init', () => {
 
 // Add category field to item sheets
 Hooks.on("renderItemSheet", (app, html, data) => {
-  if (app.item.type !== 'feat') return;
+  if (app.item?.type !== 'feat') return;
+  
+  // Get current category value
+  const currentCategory = app.item.getFlag(MODULE_ID, 'category') || '';
   
   // Create the category input field
   const categoryField = `
     <div class="form-group">
       <label>Category</label>
       <div class="form-fields">
-        <input type="text" name="flags.${MODULE_ID}.category" value="${app.item.getFlag(MODULE_ID, 'category') || ''}">
+        <input type="text" name="flags.${MODULE_ID}.category" value="${currentCategory}">
       </div>
     </div>
   `;
   
-  // Insert at the top of the details tab
-  const detailsHeader = html.find('.sheet-header').next();
-  if (detailsHeader.length) {
-    detailsHeader.after(categoryField);
+  // Try to find the right place to insert
+  const typeLabel = html.find('label:contains("Type")').first();
+  if (typeLabel.length) {
+    typeLabel.closest('.form-group').before(categoryField);
   } else {
     html.find('form').prepend(categoryField);
   }
 });
 
-// Patch the character sheet's getData method
-Hooks.once("ready", () => {
-  libWrapper.register(
-    MODULE_ID,
-    "dnd5e.applications.actor.ActorSheet5eCharacter.prototype.getData",
-    customCategoriesGetData,
-    "WRAPPER"
-  );
-});
-
-// Custom getData function
-async function customCategoriesGetData(wrapped, ...args) {
-  // Get the original data
-  const data = await wrapped(...args);
+// Create custom feature groups on character sheet
+Hooks.on("renderActorSheet", (app, html, data) => {
+  if (app.actor?.type !== 'character') return;
   
-  // Check if there are features to categorize
-  if (!data.features || !data.features.length) return data;
+  // Find the features tab
+  const featuresTab = html.find('.tab.features, [data-tab="features"]').first();
+  if (!featuresTab.length) return;
   
-  // Create a copy of the features array to modify
-  const originalFeatures = [...data.features];
+  // Get all features
+  const features = app.actor.items.filter(i => i.type === 'feat');
   
-  // Collect all items with custom categories
-  const categorizedItems = [];
+  // Group by category
   const categories = {};
-  
-  // First pass - identify items with custom categories
-  for (const section of originalFeatures) {
-    if (!section.items) continue;
-    
-    for (const item of section.items) {
-      const category = item.flags?.[MODULE_ID]?.category;
-      if (category) {
-        if (!categories[category]) {
-          categories[category] = {
-            label: category,
-            items: [],
-            dataset: { type: category },
-            hasActions: true
-          };
-        }
-        
-        // Add to the custom category
-        categories[category].items.push(item);
-        categorizedItems.push(item);
-      }
+  for (const feature of features) {
+    const category = feature.getFlag(MODULE_ID, 'category');
+    if (category) {
+      if (!categories[category]) categories[category] = [];
+      categories[category].push(feature);
     }
   }
   
-  // Second pass - remove categorized items from original sections
-  for (const section of originalFeatures) {
-    if (!section.items) continue;
+  // If no categorized features, nothing to do
+  if (Object.keys(categories).length === 0) return;
+  
+  // Create HTML for custom categories
+  let categoryHTML = '<div class="custom-categories">';
+  
+  for (const [category, feats] of Object.entries(categories)) {
+    categoryHTML += `
+      <div class="custom-category">
+        <h3>${category}</h3>
+        <ol class="items-list">
+    `;
     
-    section.items = section.items.filter(item => 
-      !categorizedItems.some(ci => ci._id === item._id)
-    );
+    for (const feat of feats) {
+      const itemId = feat.id;
+      const uses = feat.system.uses || {};
+      const useValue = uses.value ?? "";
+      const useMax = uses.max ?? "";
+      const useRecovery = uses.per ? CONFIG.DND5E.limitedUsePeriods[uses.per] : "";
+      
+      categoryHTML += `
+        <li class="item" data-item-id="${itemId}">
+          <div class="item-name rollable">
+            <div class="item-image"><img src="${feat.img}" alt="${feat.name}"></div>
+            <h4>${feat.name}</h4>
+          </div>
+          <div class="item-uses">${useValue} ${useMax ? `/ ${useMax}` : ""}</div>
+          <div class="item-recovery">${useRecovery}</div>
+          <div class="item-controls">
+            <a class="item-control item-edit" title="Edit Item"><i class="fas fa-edit"></i></a>
+            <a class="item-control item-delete" title="Delete Item"><i class="fas fa-trash"></i></a>
+          </div>
+        </li>
+      `;
+    }
+    
+    categoryHTML += `
+        </ol>
+      </div>
+    `;
   }
   
-  // Add custom categories to features
-  for (const category of Object.values(categories)) {
-    originalFeatures.push(category);
+  categoryHTML += '</div>';
+  
+  // Insert before first section or at top of features tab
+  const firstSection = featuresTab.find('section, .item-list, .features-list').first();
+  if (firstSection.length) {
+    firstSection.before(categoryHTML);
+  } else {
+    featuresTab.append(categoryHTML);
   }
   
-  // Replace the features array in the data
-  data.features = originalFeatures;
+  // Remove categorized features from default lists to avoid duplication
+  for (const category in categories) {
+    for (const feat of categories[category]) {
+      html.find(`.item[data-item-id="${feat.id}"]`).not('.custom-category .item').remove();
+    }
+  }
   
-  return data;
-}
+  // Add event listeners to the new elements
+  html.find('.custom-category .item-name.rollable').click(ev => {
+    const itemId = $(ev.currentTarget).closest('.item').data('item-id');
+    const item = app.actor.items.get(itemId);
+    if (item) item.roll();
+  });
+  
+  html.find('.custom-category .item-edit').click(ev => {
+    const itemId = $(ev.currentTarget).closest('.item').data('item-id');
+    const item = app.actor.items.get(itemId);
+    if (item) item.sheet.render(true);
+  });
+  
+  html.find('.custom-category .item-delete').click(ev => {
+    const itemId = $(ev.currentTarget).closest('.item').data('item-id');
+    const item = app.actor.items.get(itemId);
+    if (item) item.delete();
+  });
+});
