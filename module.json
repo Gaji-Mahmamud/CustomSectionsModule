@@ -2,7 +2,7 @@
   "id": "custom-feature-categories",
   "title": "Custom Feature Categories",
   "description": "Group features into custom categories on character sheets",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "compatibility": {
     "minimum": "10",
     "verified": "13"
