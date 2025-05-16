@@ -244,4 +244,135 @@ Hooks.on("renderActorSheet5eCharacter", (app, html, data) => {
   
   console.log(`${MODULE_ID} | Removing duplicated features from other sections`);
   
-  // Remove categorized features from the "Other Features" section to a
+  // Remove categorized features from the "Other Features" section to avoid duplication
+  for (const category in categories) {
+    for (const feat of categories[category]) {
+      const featureItem = html.find(`.features-list .item[data-item-id="${feat.id}"]`);
+      if (featureItem.length) {
+        // Find the parent section
+        const parentSection = featureItem.closest('section');
+        featureItem.remove();
+        
+        // If the section is now empty, hide or update it
+        if (parentSection.find('.item').length === 0) {
+          const sectionHeader = parentSection.find('.items-header');
+          if (sectionHeader.text().includes('Other')) {
+            if (uncategorized.length === 0) {
+              parentSection.hide();
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  console.log(`${MODULE_ID} | Adding event listeners`);
+  
+  // Add event listeners to the new elements
+  // Toggle category visibility
+  html.find('.custom-category-toggle').click(ev => {
+    ev.preventDefault();
+    const categoryId = ev.currentTarget.dataset.category;
+    const content = html.find(`.custom-category-content[data-category="${categoryId}"]`);
+    const icon = ev.currentTarget.querySelector('i');
+    
+    if (content.is(':visible')) {
+      content.slideUp(200);
+      icon.classList.replace('fa-angle-down', 'fa-angle-right');
+    } else {
+      content.slideDown(200);
+      icon.classList.replace('fa-angle-right', 'fa-angle-down');
+    }
+  });
+  
+  // Feature item interactions
+  html.find('.custom-category .item-name.rollable').click(ev => {
+    ev.preventDefault();
+    const itemId = ev.currentTarget.closest('.item').dataset.itemId;
+    const item = actor.items.get(itemId);
+    if (item) item.roll();
+  });
+  
+  html.find('.custom-category .item-edit').click(ev => {
+    ev.preventDefault();
+    const itemId = ev.currentTarget.closest('.item').dataset.itemId;
+    const item = actor.items.get(itemId);
+    if (item) item.sheet.render(true);
+  });
+  
+  html.find('.custom-category .item-delete').click(ev => {
+    ev.preventDefault();
+    const li = ev.currentTarget.closest('.item');
+    const itemId = li.dataset.itemId;
+    
+    renderDialog({
+      title: `Delete Feature`,
+      content: `<p>Are you sure you want to delete <strong>${actor.items.get(itemId).name}</strong>?</p>`,
+      buttons: {
+        yes: {
+          icon: '<i class="fas fa-trash"></i>',
+          label: "Delete",
+          callback: () => actor.items.get(itemId).delete()
+        },
+        no: {
+          icon: '<i class="fas fa-times"></i>',
+          label: "Cancel"
+        }
+      },
+      default: "no"
+    });
+  });
+  
+  // Uses counter interactions - increase/decrease
+  html.find('.custom-category .item-uses input').change(ev => {
+    ev.preventDefault();
+    const itemId = ev.currentTarget.closest('.item').dataset.itemId;
+    const item = actor.items.get(itemId);
+    if (!item) return;
+    
+    const value = Number(ev.currentTarget.value);
+    item.update({"system.uses.value": value});
+  });
+  
+  console.log(`${MODULE_ID} | Custom categories injection complete`);
+});
+
+/**
+ * Helper function to render confirmation dialogs
+ */
+function renderDialog({title, content, buttons, default: defaultButton}) {
+  return new Dialog({
+    title,
+    content,
+    buttons,
+    default: defaultButton
+  }).render(true);
+}
+
+/**
+ * Helper function to get feature uses data
+ */
+function getFeatureUseData(feature) {
+  const uses = feature.system.uses || {};
+  const usesValue = uses.value ?? "";
+  const usesMax = uses.max ?? "";
+  const usesPer = uses.per ? CONFIG.DND5E.limitedUsePeriods[uses.per] : "";
+  
+  let usesHTML = '';
+  if (usesMax) {
+    usesHTML = `
+      <div class="item-uses flexrow">
+        <div class="item-usage">
+          <input class="uses-value" type="text" value="${usesValue}" placeholder="0">
+          <span class="sep"> / </span>
+          <span class="uses-max">${usesMax}</span>
+          <span class="recovery">${usesPer}</span>
+        </div>
+      </div>
+    `;
+  } else {
+    usesHTML = `<div class="item-uses flexrow"></div>`;
+  }
+  
+  return { usesHTML };
+}
